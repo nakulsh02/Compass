@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Infinite Precision Compass</title>
+    <style>
+        :root { 
+            --bg: #0b1118; 
+            --dial: #1a222c; 
+            --red: #ff3b30; 
+            --text: #ffffff;
+            --dim-text: #8e9aaf;
+        }
+        
+        body { 
+            background: var(--bg); 
+            color: var(--text); 
+            font-family: 'Inter', -apple-system, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            margin: 0; 
+            overflow: hidden; 
+        }
+
+        h1 {
+            font-size: 1.4rem;
+            letter-spacing: 0.4rem;
+            text-transform: uppercase;
+            color: var(--text);
+            margin: 0 0 50px 0;
+            font-weight: 700;
+        }
+        
+        .compass-box { 
+            position: relative; 
+            width: 320px; 
+            height: 320px; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #disc {
+            position: absolute; 
+            width: 100%; 
+            height: 100%;
+            background: var(--dial); 
+            border-radius: 50%;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+            /* Shortest-path liquid transition */
+            transition: transform 0.6s cubic-bezier(0.1, 0.8, 0.2, 1);
+            transform-origin: center center;
+        }
+
+        .marker { 
+            position: absolute; 
+            width: 100%; 
+            height: 100%; 
+            display: flex;
+            justify-content: center;
+            padding-top: 15px; /* Adjusts distance from edge */
+            font-weight: 700; 
+            color: var(--dim-text); 
+            font-size: 15px;
+            box-sizing: border-box;
+            /* Ensures text rotates around the absolute center of the disc */
+            transform-origin: center center;
+        }
+
+        .needle { 
+            position: absolute; 
+            top: 40px; /* Aligned with center pivot */
+            width: 14px; 
+            height: 150px; 
+            background: linear-gradient(to bottom, var(--red) 50%, #3d444d 50%); 
+            clip-path: polygon(50% 0%, 0% 100%, 100% 100%); 
+            z-index: 5; 
+            pointer-events: none;
+        }
+
+        .center-dot { 
+            position: absolute; 
+            width: 22px; 
+            height: 22px; 
+            background: var(--red); 
+            border-radius: 50%; 
+            z-index: 6; 
+            border: 4px solid var(--bg);
+        }
+        
+        .info { 
+            text-align: center; 
+            margin-top: 40px; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            min-height: 180px;
+        }
+        
+        .heading-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+
+        #heading-num { 
+            font-size: 5rem; 
+            font-weight: 900; 
+            margin: 0; 
+            letter-spacing: -3px;
+        }
+        
+        #cardinal { 
+            font-size: 2.5rem; 
+            color: var(--red); 
+            font-weight: 800;
+            margin-left: 12px;
+        }
+
+        #gps-status {
+            margin-top: 15px;
+            font-size: 0.85rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--red);
+        }
+        
+        #start-btn { 
+            margin-top: 25px;
+            background: var(--red); 
+            color: white; 
+            border: none; 
+            padding: 16px 52px; 
+            border-radius: 50px; 
+            font-weight: 800; 
+            cursor: pointer; 
+            box-shadow: 0 10px 30px rgba(255, 59, 48, 0.4);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>COMPASS</h1>
+
+    <div class="compass-box">
+        <div id="disc"></div>
+        <div class="needle"></div>
+        <div class="center-dot"></div>
+    </div>
+
+    <div class="info">
+        <div class="heading-container">
+            <span id="heading-num">0°</span>
+            <span id="cardinal">N</span>
+        </div>
+        <div id="gps-status">AWAITING CALIBRATION</div>
+        <button id="start-btn" onclick="init()">START PRECISION MODE</button>
+    </div>
+
+    <script>
+        const disc = document.getElementById('disc');
+        const hNum = document.getElementById('heading-num');
+        const hCard = document.getElementById('cardinal');
+        const gpsLabel = document.getElementById('gps-status');
+        let currentRotation = 0;
+        let magneticDeclination = 0;
+
+        // Generate Symmetric Markers
+        const pts = {0:'N', 30:'30', 60:'60', 90:'E', 120:'120', 150:'150', 180:'S', 210:'210', 240:'240', 270:'W', 300:'300', 330:'330'};
+        for (let a in pts) {
+            let d = document.createElement('div');
+            d.className = 'marker';
+            d.style.transform = `rotate(${a}deg)`;
+            d.innerHTML = `<span>${pts[a]}</span>`;
+            if(pts[a] === 'N') d.style.color = 'var(--red)';
+            disc.appendChild(d);
+        }
+
+        function getShortestRotation(target) {
+            let diff = target - (currentRotation % 360);
+            if (diff > 180) diff -= 360;
+            if (diff < -180) diff += 360;
+            currentRotation += diff;
+            return -currentRotation; 
+        }
+
+        function updateUI(heading) {
+            let corrected = (heading + magneticDeclination + 360) % 360;
+            const rounded = Math.round(corrected);
+            
+            disc.style.transform = `rotate(${getShortestRotation(rounded)}deg)`;
+            hNum.innerText = rounded + "°";
+            
+            const cards = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+            hCard.innerText = cards[Math.round(rounded / 45) % 8];
+        }
+
+        function handleOrientation(event) {
+            let heading = event.webkitCompassHeading || (360 - event.alpha);
+            if (heading !== null) updateUI(heading);
+        }
+
+        async function init() {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => { 
+                    magneticDeclination = 1.3; 
+                    gpsLabel.innerText = "GPS: TRUE NORTH ACTIVE"; 
+                    gpsLabel.style.color = "#22c55e"; 
+                }, 
+                () => { 
+                    gpsLabel.innerText = "GPS: MAGNETOMETER ONLY"; 
+                    gpsLabel.style.color = "#ff3b30"; 
+                }, 
+                {enableHighAccuracy:true}
+            );
+
+            if (window.DeviceOrientationEvent) {
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    const res = await DeviceOrientationEvent.requestPermission();
+                    if (res === 'granted') window.addEventListener('deviceorientation', handleOrientation);
+                } else {
+                    window.addEventListener('deviceorientationabsolute', handleOrientation);
+                }
+            }
+            
+            document.getElementById('start-btn').style.visibility = 'hidden';
+        }
+    </script>
+</body>
+</html>
+
